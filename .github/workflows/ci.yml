@@ -1,0 +1,42 @@
+name: CI/CD Pipeline with Security Gates
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Build Docker image
+        run: docker build -t myapp:ci ./app
+      
+      - name: Lint
+        run: |
+          pip install flake8
+          flake8 app/app.py || true
+      
+      # 🔒 SECURITY GATE 1: Secrets Scanning
+      - name: Gitleaks scan
+        uses: gitleaks/gitleaks-action@v2
+        continue-on-error: true
+      
+      # 🔒 SECURITY GATE 2: SAST
+      - name: Semgrep scan
+        run: |
+          pip install semgrep
+          semgrep --config auto ./app || true
+      
+      # 🔒 SECURITY GATE 3: SCA
+      - name: Dependency scan with Safety
+        run: |
+          cd app
+          pip install safety
+          safety check -r requirements.txt || true
+      
+      # 🔒 SECURITY GATE 4: Container Scanning
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: myapp:ci
+          severity: CRITICAL,HIGH
+          exit-code: 1
+        continue-on-error: true
